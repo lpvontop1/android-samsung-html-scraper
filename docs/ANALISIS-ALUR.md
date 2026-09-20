@@ -13,11 +13,12 @@ dan hasil pengujian. Disusun sebagai bagian dari proses QA aplikasi ini sendiri.
 | Ekstensi resmi Samsung Internet (Add-ons) | ❌ Tidak praktis | Berbasis APK yang **wajib divalidasi Samsung** & didistribusikan via Galaxy Store (dok. resmi: *All third-party extension apps are validated and approved by Samsung*) |
 | Membaca `/data/data/com.sec.android.app.sbrowser` | ❌ | Sandbox Android; butuh root |
 | `view-source:` URL | ✅ | Didukung Samsung Internet (Chromium) — HTML sumber penuh, sesi browser ikut karena request dilakukan browser |
+| Bookmarklet (JS dijalankan di dalam halaman) | ✅ | Samsung Internet (basis Chromium) mengeksekusi bookmark `javascript:`; kode berjalan di konteks halaman → DOM render + cookie terbaca; kirim via `fetch` ke server lokal aplikasi atau clipboard |
 | Chrome DevTools Protocol (CDP) | ✅ | Samsung Internet mendukung remote debugging (`*_devtools_remote`); cukup `adb forward` — standar di lab QA |
 | AccessibilityService | ✅ | Boleh membaca pohon jendela aplikasi aktif; best-effort untuk URL & teks |
 
-Kesimpulan: **kombinasi 4 mode** memberi cakupan terbaik tanpa root, tanpa persetujuan Samsung,
-tanpa distribusi khusus.
+Kesimpulan: **kombinasi 5 mode** memberi cakupan terbaik tanpa root, tanpa persetujuan Samsung,
+tanpa distribusi khusus — dan kini **tanpa PC/kabel** berkat Mode Bookmarklet.
 
 ---
 
@@ -104,6 +105,51 @@ agar tidak duplikat) → CaptureStore.save() → simpan cookie per-host untuk We
 Pengaman: timeout 45 s; onReceivedError (main frame) → toast; flag saved mencegah dobel.
 ```
 
+### 2.4 Mode Bookmarklet (tanpa ADB — v1.1.0)
+
+```
+[MainActivity] Mulai Server
+        ▼
+[ContextCompat.startForegroundService] → CaptureServerService
+        ├─ startForeground <5 s (wajib) dengan notifikasi + aksi Hentikan
+        ├─ token acak 12-hex dibuat sekali (Prefs.ensureToken)
+        ▼
+[CaptureServer] bind 127.0.0.1:port (TIDAK 0.0.0.0 → tak terlihat dari jaringan)
+        ├─ GET  /ping            → 200 "ok"
+        ├─ OPT  /cap/<token>     → 204 + CORS + Access-Control-Allow-Private-Network: true
+        │                          (wajib utk fetch https→localhost di Chromium 94+)
+        └─ POST /cap/<token>     → validasi token → onPayload(body) → 200 "ok"
+                                   (token salah → 404; body >32 MB → 400; callback error → 500)
+
+[Samsung Internet] user membuka bookmark "Ambil HTML" pada halaman target
+        ├─ JS berjalan di konteks halaman: kumpulkan location.href, title,
+        │   documentElement.outerHTML, document.cookie, localStorage/sessionStorage,
+        │   ua, viewport, readyState, performance resources
+        ├─ fetch POST http://127.0.0.1:<port>/cap/<token>  (body text/plain → tanpa
+        │   preflight CORS biasa; PNA preflight tetap dijawab server)
+        └─ fetch gagal (http page / halaman error)? → fallback: execCommand('copy')
+            → user tekan "Tempel & Simpan" di aplikasi → fromSnapshotJson → simpan
+
+[Service onPayload]
+        → CaptureRecord.fromSnapshotJson(mode="bookmarklet")
+        → validasi html/url tidak kosong → CaptureStore.save()
+        → simpan cookie per-host untuk mode WebView
+        → toast + notifikasi "Halaman ter-capture"
+```
+
+**Keputusan desain penting:**
+- **Server hanya di loopback** + **token di path** → situs/aplikasi lain tidak bisa mengirim
+  data palsu (mereka tidak tahu token); tidak ada ekspos ke Wi-Fi.
+- **Body `text/plain`** → termasuk *simple request* CORS (tanpa preflight biasa); preflight PNA
+  dari halaman https ke loopback tetap dijawab lengkap.
+- **Foreground service `dataSync`** → server tetap hidup saat user pindah ke Samsung Internet;
+  `START_STICKY` → hidup lagi bila sistem mematikan; aksi notifikasi untuk berhenti.
+- **Fallback clipboard** → tetap berfungsi di kasus Chromium memblokir fetch (halaman http non-TLS);
+  Android 10+ hanya mengizinkan baca clipboard saat aplikasi fokus — tombol "Tempel & Simpan"
+  memenuhi syarat itu.
+- **Batas ukuran** → body 32 MB (server), DOM 8 M karakter (model) → halaman monster tidak
+  menggantung aplikasi.
+
 ---
 
 ## 3. Model Data & Penyimpanan
@@ -136,23 +182,36 @@ Pengaman: timeout 45 s; onReceivedError (main frame) → toast; flag saved mence
 | 15 | Record rusak di penyimpanan | `CaptureStore.list/load` menangkap exception & melewati record rusak |
 | 16 | Aktivitas layar detail tanpa data | load null → finish() otomatis |
 | 17 | Aplikasi QA dipakai di browser lain | Bubble hanya muncul untuk paket Samsung Internet |
+| 18 | Port server bookmarklet dipakai aplikasi lain | `SO_REUSEADDR` + error jelas ("Gagal membuka port N") → ganti port di UI |
+| 19 | Service direstart sistem (START_STICKY, intent null) | onStartCommand membuat ulang server + notifikasi foreground |
+| 20 | Halaman http (non-TLS) memblokir fetch loopback | Bookmarklet fallback `execCommand('copy')` → Tempel & Simpan |
+| 21 | Request tanpa token / path salah | 404 tanpa kebocoran informasi |
+| 22 | Activity ditutup saat postDelayed status server | Guard `isFinishing/isDestroyed` pada refreshServerStatus |
 
 ## 5. Hasil Pengujian
 
 | Uji | Hasil |
 |---|---|
-| `gradlew :app:assembleDebug` (JDK 21, AGP 8.7.3, Gradle 8.10.2, SDK 34) | ✅ BUILD SUCCESSFUL — APK 12,4 MB |
-| `gradlew :app:testDebugUnitTest` — 14 kasus (Models 9 + WsFrame 5) | ✅ 14 lulus, 0 gagal |
-| Validasi well-formed 18 file XML resource | ✅ semua OK |
-| Review manual alur (state machine bubble, CDP handshake, penanganan timeout) | ✅ lulus |
+| `gradlew :app:assembleDebug` (JDK 21, AGP 8.7.3, Gradle 8.10.2, SDK 34) | ✅ BUILD SUCCESSFUL — APK 12,5 MB (v1.1.0) |
+| `gradlew :app:testDebugUnitTest` — 29 kasus (Models 9 + WsFrame 5 + BookmarkletPayload 8 + CaptureServer 7) | ✅ 29 lulus, 0 gagal |
+| Validasi sintaks JS bookmarklet via Node `new Function()` | ✅ valid, 1,4 KB satu baris |
+| Simulasi payload bookmarklet vs kontrak `fromSnapshotJson` | ✅ semua field cocok |
+| Validasi well-formed file XML resource | ✅ semua OK |
+| Review manual alur (state machine bubble, CDP handshake, protokol server, fallback clipboard) | ✅ lulus |
 
 ## 6. Yang Disarankan Diuji di Perangkat Fisik
 
-1. Instal APK → aktifkan aksesibilitas + overlay → buka Samsung Internet → bubble muncul.
-2. Tekan bubble di halaman index → cek toast + riwayat: record `A11Y(+VIEW-SOURCE)`.
-3. Aktifkan "view-source otomatis" → pastikan browser kembali ke halaman semula setelah capture.
-4. Jalankan `adb forward tcp:9333 localabstract:com.sec.android.app.sbrowser_devtools_remote`
-   → Tes → Capture via DevTools → verifikasi bagian DOM/COOKIES/LOGS/NETWORK terisi.
-5. Capture via WebView dengan cookie manual → muat halaman yang butuh login → verifikasi konten
+1. Instal APK → **Mulai Server** → pastikan status berubah "Aktif :8777" + notifikasi muncul.
+2. **Salin Kode Bookmarklet** → pasang bookmark di Samsung Internet (tombol Cara Pasang) →
+   buka halaman apa pun → jalankan bookmark → verifikasi toast/notifikasi + riwayat baru
+   berlabel `BOOKMARKLET` dengan bagian DOM/COOKIES/STORAGE/NETWORK terisi.
+3. Uji fallback: buka halaman http biasa → jalankan bookmarklet → bila muncul "DISALIN ke
+   clipboard" → kembali ke aplikasi → **Tempel & Simpan** → record tersimpan.
+4. Aktifkan aksesibilitas + overlay → buka Samsung Internet → bubble muncul → tekan di halaman
+   index → cek toast + riwayat: record `A11Y(+VIEW-SOURCE)`.
+5. Aktifkan "view-source otomatis" → pastikan browser kembali ke halaman semula setelah capture.
+6. Mode DevTools tanpa kabel (Android 11+): wireless debugging + Termux `adb forward` → Tes →
+   Capture via DevTools → verifikasi bagian DOM/COOKIES(HttpOnly)/LOGS/NETWORK terisi.
+7. Capture via WebView dengan cookie manual → muat halaman yang butuh login → verifikasi konten
    ter-autentikasi.
-6. Detail → Salin / Bagikan ZIP / Hapus.
+8. Detail → Salin / Bagikan ZIP / Hapus.

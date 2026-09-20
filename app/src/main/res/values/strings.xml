@@ -33,9 +33,34 @@
     <string name="hint_devtools_port">Port adb forward (default 9333)</string>
     <string name="hint_manual_cookies">Cookie manual untuk WebView (format: nama=nilai; nama2=nilai2) — opsional</string>
 
+    <!-- Mode Bookmarklet (tanpa ADB) -->
+    <string name="bm_title">Mode Instan — Bookmarklet (Tanpa PC / Tanpa ADB)</string>
+    <string name="bm_desc">Ambil halaman yang SEDANG dibuka di Samsung Internet: DOM hasil render, cookie yang terbaca, localStorage/sessionStorage, dan daftar resource. Lengkapi dengan login/sesi asli browser — cukup satu bookmark.</string>
+    <string name="bm_server_label">Server Tangkap Lokal</string>
+    <string name="bm_server_on">Aktif :%1$s</string>
+    <string name="bm_server_off">Nonaktif</string>
+    <string name="bm_start">Mulai Server</string>
+    <string name="bm_stop">Hentikan Server</string>
+    <string name="bm_copy">Salin Kode Bookmarklet</string>
+    <string name="bm_help">Cara Pasang</string>
+    <string name="bm_paste">Tempel &amp; Simpan</string>
+    <string name="hint_server_port">Port server bookmarklet (default 8777)</string>
+    <string name="bm_server_started">Server aktif di 127.0.0.1:%1$s. Salin bookmarklet lalu pasang di Samsung Internet.</string>
+    <string name="bm_server_stopped">Server tangkap dihentikan</string>
+    <string name="bm_copied">Kode bookmarklet tersalin. Buka Samsung Internet, edit salah satu bookmark, tempel kodenya di kolom URL.</string>
+    <string name="bm_clip_empty">Clipboard tidak berisi data capture. Jalankan bookmarklet "Ambil HTML" di Samsung Internet terlebih dahulu.</string>
+    <string name="bm_payload_invalid">Data capture tidak valid (tidak ada HTML/URL)</string>
+    <string name="bm_payload_fail">Gagal menyimpan capture: %1$s</string>
+    <string name="notif_capture_title">Halaman ter-capture</string>
+    <string name="notif_server_error_title">Server tangkap berhenti</string>
+    <string name="notif_server_title">Server Tangkap Aktif</string>
+    <string name="notif_server_text">Berjalan di 127.0.0.1:%1$s — buka halaman di Samsung Internet lalu jalankan bookmarklet.</string>
+    <string name="notif_stop">Hentikan</string>
+    <string name="notif_channel_server">Server Tangkap</string>
+
     <!-- Daftar -->
     <string name="list_title">Riwayat Capture</string>
-    <string name="list_empty">Belum ada capture.\nBuka Samsung Internet lalu tekan tombol melayang, atau gunakan capture DevTools/WebView.</string>
+    <string name="list_empty">Belum ada capture.\nCara tercepat: Mulai Server → pasang bookmarklet di Samsung Internet → jalankan bookmark "Ambil HTML" pada halaman target. Bisa juga lewat tombol melayang atau DevTools/WebView.</string>
     <string name="btn_refresh">Segarkan</string>
 
     <!-- Bubble -->

@@ -8,6 +8,7 @@ import android.app.PendingIntent
 import android.content.ClipData
 import android.content.ClipboardManager
 import android.content.Context
+import android.content.SharedPreferences
 import android.content.Intent
 import android.content.pm.PackageManager
 import android.os.Build
@@ -36,8 +37,23 @@ object Prefs {
     const val BUBBLE_Y = "bubbleY"
     const val AUTO_COOKIE_PREFIX = "autock_"
 
+    // Mode bookmarklet (tanpa ADB)
+    const val SERVER_PORT = "serverPort"
+    const val DEFAULT_SERVER_PORT = 8777
+    const val BM_TOKEN = "bmToken"
+
     /** Kunci cookie otomatis per-host. */
     fun autoCookieKey(host: String) = AUTO_COOKIE_PREFIX + host
+
+    /** Ambil token keamanan bookmarklet; buat sekali dan simpan bila belum ada. */
+    fun ensureToken(prefs: SharedPreferences): String {
+        val existing = prefs.getString(BM_TOKEN, null)
+        if (!existing.isNullOrBlank()) return existing
+        val chars = "0123456789abcdef"
+        val fresh = buildString { repeat(12) { append(chars.random()) } }
+        prefs.edit().putString(BM_TOKEN, fresh).apply()
+        return fresh
+    }
 }
 
 object Util {

@@ -1,6 +1,7 @@
 package com.qa.samsungscraper.activity
 
 import android.Manifest
+import android.content.ClipboardManager
 import android.content.Intent
 import android.content.pm.PackageManager
 import android.net.Uri
@@ -22,8 +23,10 @@ import com.qa.samsungscraper.cdp.CdpClient
 import com.qa.samsungscraper.cdp.CdpTarget
 import com.qa.samsungscraper.databinding.ActivityMainBinding
 import com.qa.samsungscraper.model.CaptureRecord
+import com.qa.samsungscraper.server.CaptureServerService
 import com.qa.samsungscraper.service.ScraperAccessibilityService
 import com.qa.samsungscraper.store.CaptureStore
+import com.qa.samsungscraper.util.BookmarkletPayload
 import com.qa.samsungscraper.util.Prefs
 import com.qa.samsungscraper.util.Util
 import com.google.android.material.color.MaterialColors
@@ -57,6 +60,7 @@ class MainActivity : AppCompatActivity() {
 
         // Muat pengaturan tersimpan
         binding.edtPort.setText(prefs.getInt(Prefs.PORT, 9333).toString())
+        binding.edtServerPort.setText(prefs.getInt(Prefs.SERVER_PORT, Prefs.DEFAULT_SERVER_PORT).toString())
         binding.edtCookies.setText(prefs.getString(Prefs.COOKIES_MANUAL, ""))
         binding.swViewSource.isChecked = prefs.getBoolean(Prefs.VIEW_SOURCE, true)
         binding.swCdpReload.isChecked = prefs.getBoolean(Prefs.CDP_RELOAD, false)
@@ -98,9 +102,16 @@ class MainActivity : AppCompatActivity() {
         binding.btnWebViewCapture.setOnClickListener { startWebViewCapture() }
         binding.btnGuide.setOnClickListener { showGuide() }
         binding.btnRefresh.setOnClickListener { refreshList() }
+        binding.btnServerToggle.setOnClickListener { toggleServer() }
+        binding.btnCopyBookmarklet.setOnClickListener { copyBookmarklet() }
+        binding.btnBmHelp.setOnClickListener { showBookmarkletHelp() }
+        binding.btnPasteSave.setOnClickListener { pasteAndSave() }
 
         // Simpan pengaturan saat berubah
         binding.edtPort.setOnFocusChangeListener { _, hasFocus ->
+            if (!hasFocus) persistSettings()
+        }
+        binding.edtServerPort.setOnFocusChangeListener { _, hasFocus ->
             if (!hasFocus) persistSettings()
         }
         binding.edtCookies.setOnFocusChangeListener { _, hasFocus ->
@@ -114,13 +125,17 @@ class MainActivity : AppCompatActivity() {
     override fun onResume() {
         super.onResume()
         refreshStatus()
+        refreshServerStatus()
         refreshList()
     }
 
     private fun persistSettings() {
         val port = binding.edtPort.text.toString().toIntOrNull()?.coerceIn(1024, 65535) ?: 9333
+        val serverPort = binding.edtServerPort.text.toString().toIntOrNull()
+            ?.coerceIn(1024, 65535) ?: Prefs.DEFAULT_SERVER_PORT
         prefs.edit()
             .putInt(Prefs.PORT, port)
+            .putInt(Prefs.SERVER_PORT, serverPort)
             .putString(Prefs.COOKIES_MANUAL, binding.edtCookies.text?.toString()?.trim().orEmpty())
             .putBoolean(Prefs.VIEW_SOURCE, binding.swViewSource.isChecked)
             .putBoolean(Prefs.CDP_RELOAD, binding.swCdpReload.isChecked)
@@ -154,6 +169,124 @@ class MainActivity : AppCompatActivity() {
                 else com.google.android.material.R.attr.colorError
             )
         )
+    }
+
+    // ---------------- Mode Bookmarklet (tanpa ADB) ----------------
+
+    private fun serverPort(): Int {
+        persistSettings()
+        return prefs.getInt(Prefs.SERVER_PORT, Prefs.DEFAULT_SERVER_PORT)
+    }
+
+    private fun refreshServerStatus() {
+        if (isFinishing || isDestroyed) return
+        val running = CaptureServerService.isRunning()
+        if (running) {
+            binding.valServer.text =
+                getString(R.string.bm_server_on, serverPort().toString())
+            binding.valServer.setTextColor(
+                MaterialColors.getColor(
+                    binding.valServer,
+                    com.google.android.material.R.attr.colorPrimary
+                )
+            )
+            binding.btnServerToggle.text = getString(R.string.bm_stop)
+        } else {
+            binding.valServer.text = getString(R.string.bm_server_off)
+            binding.valServer.setTextColor(
+                MaterialColors.getColor(
+                    binding.valServer,
+                    com.google.android.material.R.attr.colorError
+                )
+            )
+            binding.btnServerToggle.text = getString(R.string.bm_start)
+        }
+    }
+
+    private fun toggleServer() {
+        if (CaptureServerService.isRunning()) {
+            stopService(Intent(this, CaptureServerService::class.java))
+            Util.toast(this, getString(R.string.bm_server_stopped))
+            binding.root.postDelayed({ refreshServerStatus() }, 300)
+        } else {
+            Prefs.ensureToken(prefs)
+            ContextCompat.startForegroundService(
+                this, Intent(this, CaptureServerService::class.java)
+            )
+            Util.toast(this, getString(R.string.bm_server_started, serverPort().toString()))
+            binding.root.postDelayed({ refreshServerStatus() }, 600)
+        }
+    }
+
+    private fun copyBookmarklet() {
+        val port = serverPort()
+        val token = Prefs.ensureToken(prefs)
+        val code = BookmarkletPayload.build(port, token)
+        Util.copyClipboard(this, code)
+        Util.toast(this, getString(R.string.bm_copied))
+    }
+
+    private fun pasteAndSave() {
+        val cm = getSystemService(CLIPBOARD_SERVICE) as ClipboardManager
+        val text = cm.primaryClip?.let { clip ->
+            (0 until clip.itemCount)
+                .mapNotNull { clip.getItemAt(it)?.text?.toString() }
+                .firstOrNull()
+        }.orEmpty().trim()
+        if (!text.startsWith("{")) {
+            Util.toast(this, getString(R.string.bm_clip_empty))
+            return
+        }
+        lifecycleScope.launch {
+            val rec = withContext(Dispatchers.IO) {
+                val r = CaptureRecord.fromSnapshotJson(
+                    browserPackage = Util.PKG_SAMSUNG,
+                    mode = "bookmarklet-clipboard",
+                    snapshotJson = text
+                )
+                if (r.domHtml.isNullOrBlank() && r.url.isBlank()) {
+                    null
+                } else {
+                    CaptureStore.save(r)
+                    r
+                }
+            }
+            if (rec == null) {
+                Util.toast(this@MainActivity, getString(R.string.bm_clip_empty))
+            } else {
+                saveAutoCookies(rec)
+                refreshList()
+                Util.toast(this@MainActivity, getString(R.string.toast_saved, rec.title))
+            }
+        }
+    }
+
+    private fun showBookmarkletHelp() {
+        val port = serverPort()
+        val token = Prefs.ensureToken(prefs)
+        val msg = buildString {
+            append("PASANG BOOKMARKLET DI SAMSUNG INTERNET (sekali saja)\n\n")
+            append("1. Pastikan status Server Tangkap di aplikasi ini: AKTIF.\n")
+            append("2. Tekan SALIN KODE BOOKMARKLET di aplikasi ini.\n")
+            append("3. Buka Samsung Internet → buka halaman apa pun (mis. example.com).\n")
+            append("4. Menu (garis tiga) → Tambahkan halaman ke → Bookmark.\n")
+            append("5. Buka Menu → Bookmark → tahan bookmark yang tadi → Edit.\n")
+            append("6. Ganti nama menjadi: Ambil HTML\n")
+            append("7. Hapus isi kolom URL, lalu TEMPEL kode bookmarklet yang tersalin.\n")
+            append("8. Simpan.\n\n")
+            append("PAKAI (setiap kali ingin mengambil halaman):\n")
+            append("• Buka halaman target di Samsung Internet (login dulu bila perlu — sesi browser asli ikut terbaca).\n")
+            append("• Buka bookmark \"Ambil HTML\" → halaman langsung terkirim ke aplikasi ini.\n")
+            append("• Jika muncul dialog izin jaringan lokal, pilih IZINKAN.\n")
+            append("• Jika kirim langsung gagal, data otomatis disalin ke clipboard — buka aplikasi ini lalu tekan TEMPEL & SIMPAN.\n\n")
+            append("Detail teknis: server lokal 127.0.0.1:$port dengan kode keamanan $token (otomatis disertakan dalam kode bookmarklet).\n")
+            append("Catatan: cookie HttpOnly tidak terbaca bookmarklet (fitur keamanan browser). Untuk cookie HttpOnly + log konsol, gunakan mode DevTools.")
+        }
+        AlertDialog.Builder(this)
+            .setTitle(R.string.bm_help)
+            .setMessage(msg)
+            .setPositiveButton(R.string.dialog_ok, null)
+            .show()
     }
 
     // ---------------- DevTools ----------------
@@ -345,17 +478,20 @@ class MainActivity : AppCompatActivity() {
     private fun showGuide() {
         val msg = buildString {
             append("CARA KERJA APLIKASI\n\n")
-            append("1) MODE BUBBLE (disarankan)\n")
+            append("1) MODE BOOKMARKLET (disarankan — TANPA PC/TANPA ADB)\n")
+            append("• Mulai Server Tangkap → Salin Kode Bookmarklet → pasang sebagai bookmark di Samsung Internet (lihat tombol Cara Pasang).\n")
+            append("• Buka halaman target di Samsung Internet → jalankan bookmark \"Ambil HTML\" → DOM hasil render + cookie terbaca + storage masuk ke aplikasi.\n\n")
+            append("2) MODE BUBBLE (tanpa ADB)\n")
             append("• Aktifkan Layanan Aksesibilitas + izinkan bubble.\n")
-            append("• Buka Samsung Internet → halaman apa pun.\n")
-            append("• Tekan bubble melayang: aplikasi membaca URL + konten, lalu (jika diaktifkan) membuka view-source: untuk menyalin HTML sumber lengkap dengan sesi browser, otomatis kembali.\n")
-            append("• Untuk halaman lain, navigasikan dulu di browser, lalu tekan bubble lagi.\n\n")
-            append("2) MODE DEVTOOLS (paling lengkap, ala F12)\n")
-            append("• Di PC: aktifkan USB debugging, lalu jalankan:\n")
-            append("adb forward tcp:9333 localabstract:com.sec.android.app.sbrowser_devtools_remote\n")
-            append("• Tekan Capture via DevTools: DOM penuh, console log, cookies (termasuk HttpOnly), daftar network, screenshot.\n\n")
-            append("3) MODE WEBVIEW\n")
-            append("• Masukkan URL → capture via WebView internal. Cookie dapat diisi manual atau dipakai dari hasil DevTools per-host.\n\n")
+            append("• Buka Samsung Internet → halaman apa pun → tekan bubble melayang: aplikasi membaca URL + konten, lalu (jika diaktifkan) membuka view-source: untuk menyalin HTML sumber lengkap dengan sesi browser, otomatis kembali.\n\n")
+            append("3) MODE WEBVIEW (tanpa ADB)\n")
+            append("• Masukkan URL → capture via WebView internal. Cookie dapat diisi manual atau dipakai dari hasil capture per-host.\n\n")
+            append("4) MODE DEVTOOLS (paling lengkap, ala F12 — butuh ADB)\n")
+            append("• Tanpa kabel USB (Android 11+): aktifkan Wireless Debugging, lalu dari Termux (pkg install android-tools) jalankan:\n")
+            append("  adb pair <ip:port> <kode>\n  adb connect <ip:port>\n  adb forward tcp:9333 localabstract:com.sec.android.app.sbrowser_devtools_remote\n")
+            append("• Dengan PC: adb forward tcp:9333 localabstract:com.sec.android.app.sbrowser_devtools_remote\n")
+            append("• Tekan Capture via DevTools: DOM penuh, log konsol, cookies (termasuk HttpOnly), daftar network, screenshot.\n\n")
+            append("PASANG APLIKASI TANPA PC: unduh APK dari halaman Releases repo GitHub ini, buka filenya, izinkan install dari sumber tidak dikenal.\n\n")
             append("DATA: tersimpan di penyimpanan internal aplikasi, dapat dilihat/dibagikan sebagai ZIP di layar detail.")
         }
         AlertDialog.Builder(this)
