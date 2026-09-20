@@ -1,0 +1,83 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="app_name">Samsung HTML Scraper QA</string>
+    <string name="a11y_label">Layanan Capture QA</string>
+    <string name="a11y_desc">Menampilkan tombol melayang untuk mengekstrak URL dan konten halaman pada Samsung Internet secara manual untuk kebutuhan QA dan testing. Layanan ini hanya aktif ketika Anda menekan tombol capture.</string>
+
+    <!-- Dashboard -->
+    <string name="app_subtitle">Alat QA: ekstrak HTML, log, sesi &amp; cookies dari halaman yang terbuka di Samsung Internet</string>
+    <string name="status_title">Status Persiapan</string>
+    <string name="status_a11y">Layanan Aksesibilitas</string>
+    <string name="status_overlay">Izin Bubble Melayang</string>
+    <string name="status_browser">Samsung Internet Terpasang</string>
+    <string name="status_devtools">Koneksi DevTools (CDP)</string>
+    <string name="btn_enable">Aktifkan</string>
+    <string name="btn_allow">Izinkan</string>
+    <string name="btn_check">Tes</string>
+    <string name="value_ok">OK</string>
+    <string name="value_not_yet">Belum</string>
+    <string name="value_yes">Ya</string>
+    <string name="value_no">Tidak</string>
+    <string name="value_unknown">Belum dites</string>
+
+    <!-- Capture -->
+    <string name="capture_title">Ambil Halaman</string>
+    <string name="hint_url">https://contoh.com/halaman</string>
+    <string name="btn_webview_capture">Capture via WebView</string>
+    <string name="btn_devtools_capture">Capture via DevTools</string>
+    <string name="btn_guide">Panduan</string>
+    <string name="settings_title">Pengaturan</string>
+    <string name="setting_viewsource">Buka view-source otomatis saat bubble ditekan</string>
+    <string name="setting_cdp_reload">Reload halaman saat capture DevTools (log konsol lengkap)</string>
+    <string name="setting_cdp_screenshot">Simpan tangkapan layar saat capture DevTools</string>
+    <string name="hint_devtools_port">Port adb forward (default 9333)</string>
+    <string name="hint_manual_cookies">Cookie manual untuk WebView (format: nama=nilai; nama2=nilai2) — opsional</string>
+
+    <!-- Daftar -->
+    <string name="list_title">Riwayat Capture</string>
+    <string name="list_empty">Belum ada capture.\nBuka Samsung Internet lalu tekan tombol melayang, atau gunakan capture DevTools/WebView.</string>
+    <string name="btn_refresh">Segarkan</string>
+
+    <!-- Bubble -->
+    <string name="bubble_content_desc">Tombol ekstrak halaman</string>
+    <string name="toast_capturing">Mengekstrak halaman…</string>
+    <string name="toast_saved">Capture tersimpan: %1$s</string>
+    <string name="toast_fail">Capture gagal: %1$s</string>
+    <string name="toast_no_url">URL tidak terbaca dari address bar. Capture tetap disimpan (mode a11y).</string>
+    <string name="toast_not_samsung">Buka dulu halaman di Samsung Internet.</string>
+    <string name="toast_busy">Masih memproses capture sebelumnya…</string>
+
+    <!-- Detail -->
+    <string name="tab_dom">DOM</string>
+    <string name="tab_source">SOURCE</string>
+    <string name="tab_cookies">COOKIES</string>
+    <string name="tab_logs">LOGS</string>
+    <string name="tab_network">NETWORK</string>
+    <string name="tab_storage">STORAGE</string>
+    <string name="tab_a11y">A11Y</string>
+    <string name="tab_meta">META</string>
+    <string name="btn_copy">Salin</string>
+    <string name="btn_zip">Bagikan ZIP</string>
+    <string name="btn_delete">Hapus</string>
+    <string name="toast_copied">Tersalin ke clipboard</string>
+    <string name="confirm_delete_title">Hapus capture?</string>
+    <string name="confirm_delete_msg">Semua data capture ini akan dihapus permanen.</string>
+    <string name="dialog_ok">OK</string>
+    <string name="dialog_cancel">Batal</string>
+
+    <!-- WebView capture -->
+    <string name="webview_loading">Memuat halaman…</string>
+    <string name="webview_saving">Menyimpan capture…</string>
+    <string name="webview_saved">Capture WebView tersimpan</string>
+    <string name="webview_fail">Capture WebView gagal: %1$s</string>
+
+    <!-- DevTools -->
+    <string name="cdp_connecting">Menyambung ke DevTools (127.0.0.1:%1$d)…</string>
+    <string name="cdp_ok">Terhubung. %1$d tab ditemukan.</string>
+    <string name="cdp_fail">Gagal terhubung ke DevTools:\n%1$s\n\nPastikan:\n1. Samsung Internet terbuka dengan halaman aktif\n2. Jalankan: adb forward tcp:%2$d localabstract:com.sec.android.app.sbrowser_devtools_remote\n3. USB debugging aktif di perangkat</string>
+    <string name="cdp_pick_target">Pilih tab yang ingin di-capture:</string>
+    <string name="cdp_capturing">Mengambil data (elemen, log, cookie, jaringan)…</string>
+
+    <!-- Panduan -->
+    <string name="guide_title">Panduan Penggunaan</string>
+</resources>
